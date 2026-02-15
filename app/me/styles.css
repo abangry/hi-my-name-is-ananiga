@@ -1,0 +1,129 @@
+/* Smooth gradient blob animations */
+
+@keyframes float1 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -20px) scale(1.05);
+  }
+  66% {
+    transform: translate(-20px, 10px) scale(0.95);
+  }
+}
+
+@keyframes float2 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-25px, 15px) scale(1.08);
+  }
+  66% {
+    transform: translate(20px, -25px) scale(0.92);
+  }
+}
+
+@keyframes float3 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(15px, 20px) scale(0.95);
+  }
+  66% {
+    transform: translate(-30px, -15px) scale(1.05);
+  }
+}
+
+@keyframes float4 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-20px, -25px) scale(1.03);
+  }
+  66% {
+    transform: translate(25px, 15px) scale(0.97);
+  }
+}
+
+@keyframes float5 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(20px, 25px) scale(1.06);
+  }
+  66% {
+    transform: translate(-15px, -20px) scale(0.94);
+  }
+}
+
+@keyframes float6 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-30px, 20px) scale(0.96);
+  }
+  66% {
+    transform: translate(15px, -30px) scale(1.04);
+  }
+}
+
+@keyframes float7 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(25px, -15px) scale(1.02);
+  }
+  66% {
+    transform: translate(-20px, 25px) scale(0.98);
+  }
+}
+
+@keyframes float8 {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(-15px, -30px) scale(1.07);
+  }
+  66% {
+    transform: translate(30px, 20px) scale(0.93);
+  }
+}
+
+.gradient-blob-1 {
+  animation: float1 20s ease-in-out infinite;
+}
+
+.gradient-blob-2 {
+  animation: float2 25s ease-in-out infinite;
+}
+
+.gradient-blob-3 {
+  animation: float3 22s ease-in-out infinite;
+}
+
+.gradient-blob-4 {
+  animation: float4 18s ease-in-out infinite;
+}
+
+.gradient-blob-5 {
+  animation: float5 24s ease-in-out infinite;
+}
+
+.gradient-blob-6 {
+  animation: float6 21s ease-in-out infinite;
+}
+
+.gradient-blob-7 {
+  animation: float7 23s ease-in-out infinite;
+}
+
+.gradient-blob-8 {
+  animation: float8 19s ease-in-out infinite;
+}
