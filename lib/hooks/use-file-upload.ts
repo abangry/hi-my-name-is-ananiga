@@ -158,6 +158,11 @@ export function isImageFile(file: File): boolean {
   return file.type.startsWith('image/')
 }
 
+// Helper to check if a file is a video
+export function isVideoFile(file: File): boolean {
+  return file.type.startsWith('video/')
+}
+
 // Helper to create a preview URL for images
 export function createImagePreview(file: File): string | null {
   if (!isImageFile(file)) return null

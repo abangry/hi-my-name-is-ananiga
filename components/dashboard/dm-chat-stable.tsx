@@ -178,13 +178,13 @@ function SwipeableMessage({
     };
   }, [enabled, msg, isOwnMessage, onReply, onEdit, onLongPress]);
 
-  if (!enabled) return <>{children}</>;
+  if (!enabled) return <div data-message-id={msg.id}>{children}</div>;
 
   const replyOpacity = Math.min(1, Math.max(0, (translateX - 15) / 55));
   const editOpacity = Math.min(1, Math.max(0, (-translateX - 15) / 55));
 
   return (
-    <div className="relative overflow-hidden">
+    <div className="relative overflow-hidden" data-message-id={msg.id}>
       {/* Reply icon - revealed when swiping right */}
       <div
         className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-500 transition-transform"
@@ -771,6 +771,25 @@ export function DmChatStable({
     if (isNearBottom) {
       messagesContainerRef.current.scrollTop = scrollHeight;
     }
+  };
+
+  const scrollToMessage = (messageId: string) => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const el = container.querySelector(`[data-message-id="${messageId}"]`) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Flash highlight
+    el.style.transition = 'background-color 0.3s ease';
+    el.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+    el.style.borderRadius = '8px';
+    setTimeout(() => {
+      el.style.backgroundColor = 'transparent';
+      setTimeout(() => {
+        el.style.transition = '';
+        el.style.borderRadius = '';
+      }, 300);
+    }, 1500);
   };
 
   const handleTyping = (text: string) => {
@@ -1412,7 +1431,10 @@ export function DmChatStable({
                           />
                         </div>
                         {/* Replied message preview */}
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
+                        <div
+                          onClick={() => scrollToMessage(repliedMessage.id)}
+                          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+                        >
                           {repliedMessage.user.avatar_url ? (
                             <img
                               src={repliedMessage.user.avatar_url}

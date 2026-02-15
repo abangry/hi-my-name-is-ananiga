@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Upload, File, Image as ImageIcon, Loader2 } from 'lucide-react'
-import { useFileUpload, isImageFile, createImagePreview, revokeImagePreview } from '@/lib/hooks/use-file-upload'
+import { useFileUpload, isImageFile, isVideoFile, createImagePreview, revokeImagePreview } from '@/lib/hooks/use-file-upload'
 
 interface FileUploadModalProps {
   isOpen: boolean
@@ -47,7 +47,7 @@ export function FileUploadModal({
       revokeImagePreview(selectedFile.previewUrl)
     }
 
-    const previewUrl = isImageFile(file) ? createImagePreview(file) : null
+    const previewUrl = (isImageFile(file) || isVideoFile(file)) ? createImagePreview(file) : null
     setSelectedFile({ file, previewUrl })
     reset()
   }, [selectedFile, reset])
@@ -152,7 +152,15 @@ export function FileUploadModal({
 
             {selectedFile ? (
               <div className="space-y-3">
-                {selectedFile.previewUrl ? (
+                {selectedFile.previewUrl && isVideoFile(selectedFile.file) ? (
+                  <div className="relative mx-auto w-48 h-32 rounded-lg overflow-hidden bg-black">
+                    <video
+                      src={selectedFile.previewUrl}
+                      className="w-full h-full object-contain"
+                      muted
+                    />
+                  </div>
+                ) : selectedFile.previewUrl ? (
                   <div className="relative mx-auto w-32 h-32 rounded-lg overflow-hidden">
                     <img
                       src={selectedFile.previewUrl}
@@ -194,7 +202,7 @@ export function FileUploadModal({
                   Drop a file here or click to browse
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Max {maxSizeMB}MB - Images, PDF, Text, ZIP
+                  Max {maxSizeMB}MB - Images, Videos, PDF, Text, ZIP
                 </p>
               </>
             )}

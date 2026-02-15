@@ -2222,11 +2222,11 @@ VALUES (
   'chat-attachments',
   true,
   10485760,
-  ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain', 'application/zip']
+  ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime', 'application/pdf', 'text/plain', 'application/zip']
 )
 ON CONFLICT (id) DO UPDATE SET
   file_size_limit = 10485760,
-  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf', 'text/plain', 'application/zip'];
+  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime', 'application/pdf', 'text/plain', 'application/zip'];
 
 -- Drop existing storage policies
 DROP POLICY IF EXISTS "Allow all operations on avatars" ON storage.objects;
