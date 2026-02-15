@@ -212,14 +212,18 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
 
         {loading ? (
           <div className={`p-8 text-center ${isDark ? 'text-neutral-400' : 'text-gray-500'}`}>
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3"></div>
+            <div className={`inline-block animate-spin rounded-full h-8 w-8 border-b-2 mb-3 ${isDark ? 'border-white' : 'border-blue-600'}`}></div>
             <p>Loading profile...</p>
           </div>
         ) : profile ? (
           <>
             {/* Banner - Responsive height */}
             <div
-              className="h-24 sm:h-32 bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 sm:rounded-t-2xl"
+              className={`h-24 sm:h-32 sm:rounded-t-2xl ${
+                isDark && !profile.banner_url
+                  ? 'bg-gradient-to-r from-[#1a1a1a] via-[#111] to-[#1a1a1a]'
+                  : 'bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500'
+              }`}
               style={{
                 backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : undefined,
                 backgroundSize: 'cover',
@@ -271,7 +275,11 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
                     {profile.display_name || profile.username}
                   </h2>
                   {isFriend && (
-                    <span className="px-2 sm:px-3 py-1 bg-gradient-to-r from-green-500 to-green-600 text-white text-xs font-bold rounded-full flex items-center gap-1 shadow-md">
+                    <span className={`px-2 sm:px-3 py-1 text-xs font-bold rounded-full flex items-center gap-1 shadow-md ${
+                      isDark
+                        ? 'bg-white text-black'
+                        : 'bg-gradient-to-r from-green-500 to-green-600 text-white'
+                    }`}>
                       <UserPlus size={12} />
                       Friends
                     </span>
@@ -297,12 +305,20 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
                   {/* Primary Actions */}
                   <div className="flex gap-2">
                     {isFriend ? (
-                      <button className="flex-1 px-3 sm:px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 text-sm sm:text-base font-bold">
+                      <button className={`flex-1 px-3 sm:px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 text-sm sm:text-base font-bold ${
+                        isDark
+                          ? 'bg-white hover:bg-neutral-200 text-black'
+                          : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white'
+                      }`}>
                         <MessageCircle size={14} className="sm:w-4 sm:h-4" />
                         Send Message
                       </button>
                     ) : (
-                      <button className="flex-1 px-3 sm:px-4 py-2.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 text-sm sm:text-base font-bold">
+                      <button className={`flex-1 px-3 sm:px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 text-sm sm:text-base font-bold ${
+                        isDark
+                          ? 'bg-white hover:bg-neutral-200 text-black'
+                          : 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white'
+                      }`}>
                         <UserPlus size={14} className="sm:w-4 sm:h-4" />
                         Add Friend
                       </button>
@@ -317,7 +333,9 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
                       disabled={blockLoading}
                       className={`flex-1 px-3 sm:px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg text-sm sm:text-base font-bold ${
                         userIsBlocked
-                          ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white hover:scale-105'
+                          ? isDark
+                            ? 'bg-white hover:bg-neutral-200 text-black hover:scale-105'
+                            : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white hover:scale-105'
                           : isDark
                             ? 'bg-[#141414] hover:bg-[#1f1f1f] text-neutral-300 border border-[#2a2a2a]'
                             : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
@@ -334,7 +352,9 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
                         disabled={muteLoading || !dmChannelId}
                         className={`w-full px-3 sm:px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg text-sm sm:text-base font-bold ${
                           dmIsMuted
-                            ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white hover:scale-105'
+                            ? isDark
+                              ? 'bg-white hover:bg-neutral-200 text-black hover:scale-105'
+                              : 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white hover:scale-105'
                             : isDark
                               ? 'bg-[#141414] hover:bg-[#1f1f1f] text-neutral-300 border border-[#2a2a2a]'
                               : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
@@ -437,8 +457,10 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
                       <div key={group.id} className={`flex items-center gap-2 sm:gap-3 p-2 rounded-lg transition-all duration-200 ${
                         isDark ? 'hover:bg-[#1f1f1f]' : 'hover:bg-gray-100'
                       }`}>
-                        <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-md ring-2 ${
-                          isDark ? 'ring-[#1f1f1f]' : 'ring-gray-200'
+                        <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-md ring-2 ${
+                          isDark
+                            ? 'bg-[#2a2a2a] ring-[#1f1f1f]'
+                            : 'bg-gradient-to-br from-blue-500 to-purple-500 ring-gray-200'
                         }`}>
                           {group.icon_url ? (
                             <img
