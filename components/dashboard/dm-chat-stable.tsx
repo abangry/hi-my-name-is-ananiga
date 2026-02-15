@@ -894,15 +894,16 @@ export function DmChatStable({
     if (!items || !profile?.id || !conversationId) return;
 
     for (const item of items) {
-      if (item.type.startsWith('image/')) {
+      if (item.type.startsWith('image/') || item.type.startsWith('video/')) {
         e.preventDefault();
         const file = item.getAsFile();
         if (!file) continue;
 
-        // Generate a name for the pasted image
+        // Generate a name for the pasted media
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const extension = file.type.split('/')[1] || 'png';
-        const fileName = `pasted-image-${timestamp}.${extension}`;
+        const prefix = item.type.startsWith('video/') ? 'pasted-video' : 'pasted-image';
+        const fileName = `${prefix}-${timestamp}.${extension}`;
 
         // Create a new file with the generated name
         const namedFile = new File([file], fileName, { type: file.type });
@@ -914,11 +915,11 @@ export function DmChatStable({
             setPendingAttachment({ url: result.url, name: result.name });
           }
         } catch (error) {
-          console.error('[DmChatStable] Failed to upload pasted image:', error);
+          console.error('[DmChatStable] Failed to upload pasted media:', error);
         } finally {
           setUploadingPaste(false);
         }
-        break; // Only handle the first image
+        break; // Only handle the first media
       }
     }
   };
@@ -1502,6 +1503,14 @@ export function DmChatStable({
                                 </button>
                               )}
                             </div>
+                          ) : msg.attachment_url.match(/\.(mp4|webm|mov)$/i) ? (
+                            <video
+                              src={msg.attachment_url}
+                              controls
+                              preload="metadata"
+                              className="max-w-xs max-h-72 rounded-lg border border-gray-200"
+                              onLoadedData={scrollToBottomIfNearEnd}
+                            />
                           ) : (
                             <a
                               href={msg.attachment_url}

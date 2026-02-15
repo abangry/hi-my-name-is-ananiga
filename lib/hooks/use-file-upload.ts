@@ -22,6 +22,9 @@ const DEFAULT_ALLOWED_TYPES = [
   'image/png',
   'image/gif',
   'image/webp',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
   'application/pdf',
   'text/plain',
   'application/zip'
