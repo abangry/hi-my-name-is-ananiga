@@ -2,6 +2,9 @@
 
 import { useEffect, useRef } from 'react';
 import { Reply, Trash2, Copy, CheckCheck, Pencil, Star, Smile } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+
 
 interface MessageContextMenuProps {
   x: number;
@@ -21,6 +24,15 @@ interface MessageContextMenuProps {
   onQuickReact?: (emoji: string) => void;
   reactedEmojis?: string[];
 }
+
+type MenuItem = {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  show: boolean;
+  danger?: boolean;
+};
+
 
 export function MessageContextMenu({
   x,
@@ -96,82 +108,73 @@ export function MessageContextMenu({
     }
   }, [x, y]);
 
-  const menuItems = [
-    {
-      icon: Reply,
-      label: 'Reply',
-      onClick: () => {
-        onReply();
-        onClose();
-      },
-      show: true,
+const menuItems: MenuItem[] = [
+  {
+    icon: Reply,
+    label: 'Reply',
+    onClick: () => {
+      onReply();
+      onClose();
     },
-    {
-      icon: Smile,
-      label: 'Add Reaction',
-      onClick: () => {
-        if (onReact) {
-          onReact();
-        }
-        onClose();
-      },
-      show: !!onReact && !quickEmojis?.length,
+    show: true,
+  },
+  {
+    icon: Smile,
+    label: 'Add Reaction',
+    onClick: () => {
+      onReact?.();
+      onClose();
     },
-    {
-      icon: Pencil,
-      label: 'Edit Message',
-      onClick: () => {
-        if (onEdit) {
-          onEdit();
-          onClose();
-        }
-      },
-      show: isOwnMessage && !!onEdit,
+    show: !!onReact && !quickEmojis?.length,
+  },
+  {
+    icon: Pencil,
+    label: 'Edit Message',
+    onClick: () => {
+      onEdit?.();
+      onClose();
     },
-    {
-      icon: Copy,
-      label: 'Copy Text',
-      onClick: () => {
-        onCopy();
-        onClose();
-      },
-      show: true,
+    show: isOwnMessage && !!onEdit,
+  },
+  {
+    icon: Copy,
+    label: 'Copy Text',
+    onClick: () => {
+      onCopy();
+      onClose();
     },
-    {
-      icon: Star,
-      label: isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
-      onClick: () => {
-        if (onToggleFavorite) {
-          onToggleFavorite();
-          onClose();
-        }
-      },
-      show: !!showFavoriteOption,
+    show: true,
+  },
+  {
+    icon: Star,
+    label: isFavorited ? 'Remove from Favorites' : 'Add to Favorites',
+    onClick: () => {
+      onToggleFavorite?.();
+      onClose();
     },
-    {
-      icon: CheckCheck,
-      label: 'Mark as Read',
-      onClick: () => {
-        onMarkAsRead();
-        onClose();
-      },
-      show: !isOwnMessage,
+    show: !!showFavoriteOption,
+  },
+  {
+    icon: CheckCheck,
+    label: 'Mark as Read',
+    onClick: () => {
+      onMarkAsRead();
+      onClose();
     },
-    // DELETE MESSAGE — currently disabled.
-    // To re-enable: uncomment the block below (and remove this comment).
-    // {
-    //   icon: Trash2,
-    //   label: 'Delete Message',
-    //   onClick: () => {
-    //     if (onDelete) {
-    //       onDelete();
-    //       onClose();
-    //     }
-    //   },
-    //   show: isOwnMessage,
-    //   danger: true,
-    // },
-  ];
+    show: !isOwnMessage,
+  },
+  // danger stays optional even if this is commented out
+  // {
+  //   icon: Trash2,
+  //   label: 'Delete Message',
+  //   onClick: () => {
+  //     onDelete?.();
+  //     onClose();
+  //   },
+  //   show: isOwnMessage,
+  //   danger: true,
+  // },
+];
 
   return (
     <div
