@@ -157,18 +157,20 @@ export function MessageContextMenu({
       },
       show: !isOwnMessage,
     },
-    {
-      icon: Trash2,
-      label: 'Delete Message',
-      onClick: () => {
-        if (onDelete) {
-          onDelete();
-          onClose();
-        }
-      },
-      show: isOwnMessage,
-      danger: true,
-    },
+    // DELETE MESSAGE — currently disabled.
+    // To re-enable: uncomment the block below (and remove this comment).
+    // {
+    //   icon: Trash2,
+    //   label: 'Delete Message',
+    //   onClick: () => {
+    //     if (onDelete) {
+    //       onDelete();
+    //       onClose();
+    //     }
+    //   },
+    //   show: isOwnMessage,
+    //   danger: true,
+    // },
   ];
 
   return (

@@ -21,23 +21,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get current status first
-    const { data: presenceData } = await supabase
+    // Set offline regardless of current status (online, idle, dnd all go offline
+    // when the tab closes - user can restore their preferred status when they return)
+    await supabase
       .from("user_presence")
-      .select("status")
-      .eq("user_id", userId)
-      .single();
-
-    // Only set offline if user was online (not idle, dnd, or already offline)
-    if (presenceData && presenceData.status === "online") {
-      await supabase
-        .from("user_presence")
-        .update({
-          status: "offline",
-          last_seen: new Date().toISOString(),
-        })
-        .eq("user_id", userId);
-    }
+      .update({
+        status: "offline",
+        last_seen: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

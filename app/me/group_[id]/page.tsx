@@ -29,5 +29,12 @@ export default async function GroupChatPage({ params }: GroupChatPageProps) {
   // Await params in Next.js 15
   const { id } = await params;
 
-  return <MainDashboard initialProfile={profile} initialView="group-chat" groupChatId={id} />;
+  // Pre-fetch group data server-side so the client renders the correct view immediately
+  const { data: groupData } = await supabase
+    .from("group_chats")
+    .select("id, name, icon_url")
+    .eq("id", id)
+    .single();
+
+  return <MainDashboard initialProfile={profile} initialView="group-chat" groupChatId={id} initialGroupData={groupData} />;
 }

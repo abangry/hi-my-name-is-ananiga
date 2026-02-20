@@ -27,6 +27,7 @@ type MessageEditedCallback = (data: { message_id: string; conversation_id: strin
 type MessageDeletedCallback = (data: { message_id: string; conversation_id: string; conversation_type: 'dm' | 'group' }) => void
 type UserBlockCallback = (data: { type: 'blocked' | 'unblocked'; blocker_user_id: string; blocked_user_id: string }) => void
 type ReactionCallback = (data: { message_id: string; conversation_id: string; conversation_type: 'dm' | 'group'; emoji: string; user_id: string; username: string; action: 'add' | 'remove' }) => void
+type ProfileUpdatedCallback = (data: { user_id: string; display_name: string | null; avatar_url: string | null; banner_url: string | null; bio: string | null; profile_theme: 'light' | 'dark' }) => void
 
 class WebSocketManager {
   private socket: Socket | null = null
@@ -49,6 +50,7 @@ class WebSocketManager {
   private messageDeletedCallbacks: Set<MessageDeletedCallback> = new Set()
   private userBlockCallbacks: Set<UserBlockCallback> = new Set()
   private reactionCallbacks: Set<ReactionCallback> = new Set()
+  private profileUpdatedCallbacks: Set<ProfileUpdatedCallback> = new Set()
   private lastMessageId: string | null = null
   private isReconnecting: boolean = false
 
@@ -223,6 +225,12 @@ class WebSocketManager {
       this.reactionCallbacks.forEach(cb => cb(data))
     })
 
+    // someone updated their profile (avatar, display name, banner, etc.)
+    socket.on('profile:updated', (data) => {
+      console.log('[WSManager] Profile updated event:', data.user_id)
+      this.profileUpdatedCallbacks.forEach(cb => cb(data))
+    })
+
     return new Promise((resolve) => {
       socket.once('connect', () => resolve())
     })
@@ -394,6 +402,17 @@ class WebSocketManager {
   onReaction(callback: ReactionCallback): () => void {
     this.reactionCallbacks.add(callback)
     return () => this.reactionCallbacks.delete(callback)
+  }
+
+  onProfileUpdate(callback: ProfileUpdatedCallback): () => void {
+    this.profileUpdatedCallbacks.add(callback)
+    return () => this.profileUpdatedCallbacks.delete(callback)
+  }
+
+  emitProfileUpdate(changes: { display_name: string | null; avatar_url: string | null; banner_url: string | null; bio: string | null; profile_theme: 'light' | 'dark' }): void {
+    if (!this.socket || !this.socket.connected) return
+    console.log('[WSManager] Emitting profile:update')
+    this.socket.emit('profile:update', changes)
   }
 
   // Emit group leave event (called after leaving group via API)

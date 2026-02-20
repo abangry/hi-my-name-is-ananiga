@@ -5,6 +5,7 @@ import { Camera, Upload, X, Save, LogOut, Sun, Moon } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { Profile } from "@/lib/types/database.types"
 import { useRouter } from "next/navigation"
+import { wsManager } from "@/lib/websocket-manager"
 
 interface ProfileSettingsPageProps {
   profile: Profile | null
@@ -158,6 +159,15 @@ export function ProfileSettingsPage({ profile: initialProfile }: ProfileSettings
         .eq('id', profile.id)
 
       if (error) throw error
+
+      // Broadcast profile update to all connected clients for live sync
+      wsManager.emitProfileUpdate({
+        display_name: displayName.trim() || null,
+        avatar_url: avatarUrl ?? null,
+        banner_url: bannerUrl ?? null,
+        bio: bio.trim() || null,
+        profile_theme: profileTheme
+      })
 
       setMessage({ type: 'success', text: 'Profile updated successfully!' })
 

@@ -62,6 +62,9 @@ export function SetStatusModal({ isOpen, onClose, profile }: SetStatusModalProps
     try {
       await updateUserStatus(selectedStatus, customStatus.trim() || null);
 
+      // Persist the chosen status so presence-provider can restore it after reconnects
+      localStorage.setItem("preferredStatus", selectedStatus);
+
       onClose();
     } catch (error) {
       console.error("Error updating status:", error);

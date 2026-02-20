@@ -213,6 +213,22 @@ export const GroupMembersSidebar = memo(function GroupMembersSidebar({ groupChat
     }
   }, [members, groupChatId, supabase])
 
+  // Listen for profile updates (avatar, display name) from any member
+  useEffect(() => {
+    const unsubProfile = wsManager.onProfileUpdate((data) => {
+      setMembers(prev => {
+        const isMember = prev.some(m => m.user_id === data.user_id)
+        if (!isMember) return prev
+        return prev.map(m =>
+          m.user_id === data.user_id
+            ? { ...m, display_name: data.display_name, avatar_url: data.avatar_url, profile_theme: data.profile_theme }
+            : m
+        )
+      })
+    })
+    return () => { unsubProfile() }
+  }, [])
+
   // Listen for typing indicators
   useEffect(() => {
     const handleTyping = (data: { userId: string; username: string; typing: boolean; conversationId: string; conversationType: 'dm' | 'group' }) => {

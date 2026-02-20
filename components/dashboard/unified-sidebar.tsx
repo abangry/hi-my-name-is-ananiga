@@ -8,7 +8,7 @@ import { MainView } from "./main-dashboard";
 import { getPendingFriendRequests, getFriends, getFriendRequestHistory } from "@/lib/actions/friends";
 import { createClient } from "@/lib/supabase/client";
 import { notificationSound } from "@/lib/utils/sounds";
-import { getCurrentUserPresence, type UserStatus } from "@/lib/actions/presence";
+import { getCurrentUserPresence, updateUserStatus, type UserStatus } from "@/lib/actions/presence";
 import { CreateGroupChatModal } from "@/components/modals/create-group-chat-modal";
 import { useGlobalSocket } from "@/lib/hooks/use-global-socket";
 import { wsManager } from "@/lib/websocket-manager";
@@ -53,14 +53,34 @@ export function UnifiedSidebar({ profile, currentView, onViewChange, onDmSelect,
     const fetchPresence = async () => {
       const result = await getCurrentUserPresence();
       if (result.success && result.data) {
-        setUserStatus(result.data.status as UserStatus);
-        setCustomStatus(result.data.custom_status || "");
-        // Sync to notification store so DND suppresses sounds
-        useNotificationStore.getState().setUserStatus(result.data.status as 'online' | 'idle' | 'dnd' | 'offline');
+        const status = result.data.status as UserStatus;
+
+        if (status === "offline") {
+          // Restore the last active status (dnd/idle/online) the user had
+          const preferred = (localStorage.getItem("preferredStatus") as UserStatus) || "online";
+          await updateUserStatus(preferred);
+          setUserStatus(preferred);
+          setCustomStatus(result.data.custom_status || "");
+          useNotificationStore.getState().setUserStatus(preferred as 'online' | 'idle' | 'dnd' | 'offline');
+        } else {
+          // Save current active status so we can restore it after reconnects
+          localStorage.setItem("preferredStatus", status);
+          setUserStatus(status);
+          setCustomStatus(result.data.custom_status || "");
+          useNotificationStore.getState().setUserStatus(status as 'online' | 'idle' | 'dnd' | 'offline');
+        }
       }
     };
 
     fetchPresence();
+
+    // Send offline beacon when tab closes so status updates quickly
+    const handleBeforeUnload = () => {
+      const endpoint = window.location.origin + "/api/presence/offline";
+      const blob = new Blob([JSON.stringify({ userId: profile.id })], { type: "application/json" });
+      navigator.sendBeacon(endpoint, blob);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     // Subscribe to presence changes
     const presenceChannel = supabase
@@ -87,6 +107,7 @@ export function UnifiedSidebar({ profile, currentView, onViewChange, onDmSelect,
 
     return () => {
       presenceChannel.unsubscribe();
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [profile, supabase]);
 

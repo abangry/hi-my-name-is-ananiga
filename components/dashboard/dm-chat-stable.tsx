@@ -14,7 +14,7 @@ import { ChatSkeleton } from "@/components/loading/chat-skeleton";
 import { createClient } from "@/lib/supabase/client";
 import { GroupSettingsModal } from "@/components/modals/group-settings-modal";
 import { FileUploadModal } from "@/components/ui/file-upload-modal";
-import { useFileUpload } from "@/lib/hooks/use-file-upload";
+import { useFileUpload, type UploadedFile } from "@/lib/hooks/use-file-upload";
 import { EmojiPicker } from "@/components/ui/emoji-picker";
 import { EmojiPicker as FrimousseEmojiPicker, type Emoji } from 'frimousse';
 import { GifPicker } from "@/components/ui/gif-picker";
@@ -206,7 +206,10 @@ function SwipeableMessage({
         ref={slideRef}
         style={{
           transform: `translateX(${translateX}px)`,
-          transition: isSnapping ? 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none'
+          transition: isSnapping ? 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none',
+          WebkitTouchCallout: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
         }}
       >
         {children}
@@ -257,8 +260,9 @@ export function DmChatStable({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [groupIconUrl, setGroupIconUrl] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [pendingAttachment, setPendingAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<UploadedFile[]>([]);
   const [uploadingPaste, setUploadingPaste] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [showStickerPicker, setShowStickerPicker] = useState(false);
@@ -650,6 +654,28 @@ export function DmChatStable({
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, [messages, profile?.id, editingMessage, replyingTo, message]);
 
+  // Auto-redirect keyboard typing to the message input (desktop UX)
+  // When the user types a printable character anywhere on the page while this
+  // chat is open, focus the input so the character lands there naturally.
+  useEffect(() => {
+    const handleGlobalTyping = (e: KeyboardEvent) => {
+      // Skip modifier combos (Ctrl+C, Cmd+V, Alt+anything, etc.)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Skip non-printable keys (arrows, F-keys, Escape, Tab, Backspace, etc.)
+      if (e.key.length !== 1) return;
+      // Skip if focus is already on an editable element (another input, search box, etc.)
+      const active = document.activeElement;
+      const tag = active?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || (active as HTMLElement)?.isContentEditable) return;
+      // Skip if the input doesn't exist or is disabled
+      if (!inputRef.current || inputRef.current.disabled) return;
+      // Focus — the browser will type the character naturally via the subsequent keypress event
+      inputRef.current.focus();
+    };
+    document.addEventListener('keydown', handleGlobalTyping);
+    return () => document.removeEventListener('keydown', handleGlobalTyping);
+  }, []);
+
   // Track previous message count and scroll height for pagination
   const prevMessageCountRef = useRef(0);
   const scrollHeightBeforeLoadRef = useRef(0);
@@ -792,6 +818,35 @@ export function DmChatStable({
     }, 1500);
   };
 
+  // Drag-and-drop file upload directly into the chat area
+  const handleChatDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+  const handleChatDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingOver(false);
+  };
+  const handleChatDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    if (!profile?.id || !conversationId) return;
+    const files = Array.from(e.dataTransfer.files);
+    if (!files.length) return;
+    setUploadingPaste(true);
+    const uploaded: UploadedFile[] = [];
+    for (const file of files) {
+      const result = await uploadFile(file, profile.id, type, conversationId);
+      if (result) uploaded.push(result);
+    }
+    if (uploaded.length) {
+      setPendingAttachments(prev => [...prev, ...uploaded]);
+    }
+    setUploadingPaste(false);
+    inputRef.current?.focus();
+  };
+
   const handleTyping = (text: string) => {
     const isTyping = text.trim().length > 0;
     const now = Date.now();
@@ -848,7 +903,7 @@ export function DmChatStable({
   };
 
   const handleSendMessage = () => {
-    if (!message.trim() && !pendingAttachment) return;
+    if (!message.trim() && pendingAttachments.length === 0) return;
 
     // Extract mention tags from content and resolve to user IDs
     const mentionTags = extractMentionTags(message);
@@ -870,9 +925,9 @@ export function DmChatStable({
       storeSendTyping(false);
 
       // Add message with 'blocked' status - it won't be sent via WebSocket
-      storeSendBlockedMessage(content, replyingTo?.id, pendingAttachment?.url);
+      storeSendBlockedMessage(content, replyingTo?.id, pendingAttachments[0]?.url);
       setReplyingTo(null);
-      setPendingAttachment(null);
+      setPendingAttachments([]);
       return;
     }
 
@@ -887,24 +942,26 @@ export function DmChatStable({
       ? replyingTo.id
       : undefined;
 
-    storeSendMessage(
-      content,
-      validReplyId,
-      pendingAttachment?.url,
-      mentionedUserIds.length > 0 ? mentionedUserIds : undefined
-    );
+    if (pendingAttachments.length === 0) {
+      // Text-only message
+      storeSendMessage(content, validReplyId, undefined, mentionedUserIds.length > 0 ? mentionedUserIds : undefined);
+    } else {
+      // First attachment carries the text + reply
+      storeSendMessage(content, validReplyId, pendingAttachments[0].url, mentionedUserIds.length > 0 ? mentionedUserIds : undefined);
+      // Remaining attachments get their own message (no text, no reply)
+      for (let i = 1; i < pendingAttachments.length; i++) {
+        storeSendMessage('', undefined, pendingAttachments[i].url, undefined);
+      }
+    }
+
     setReplyingTo(null);
-    setPendingAttachment(null);
+    setPendingAttachments([]);
   };
 
-  const handleUploadComplete = (url: string, fileName: string) => {
-    setPendingAttachment({ url, name: fileName });
+  const handleUploadComplete = (uploads: UploadedFile[]) => {
+    setPendingAttachments(prev => [...prev, ...uploads]);
     setShowUploadModal(false);
     inputRef.current?.focus();
-  };
-
-  const cancelAttachment = () => {
-    setPendingAttachment(null);
   };
 
   // Handle paste for images
@@ -931,7 +988,7 @@ export function DmChatStable({
         try {
           const result = await uploadFile(namedFile, profile.id, type, conversationId);
           if (result) {
-            setPendingAttachment({ url: result.url, name: result.name });
+            setPendingAttachments(prev => [...prev, result]);
           }
         } catch (error) {
           console.error('[DmChatStable] Failed to upload pasted media:', error);
@@ -1200,7 +1257,18 @@ export function DmChatStable({
   return (
     <div className="flex h-full bg-gradient-to-br from-gray-50 to-white">
       {/* Main Chat Area */}
-      <div className="relative flex-1 h-full">
+      <div
+        className="relative flex-1 h-full"
+        onDragOver={handleChatDragOver}
+        onDragLeave={handleChatDragLeave}
+        onDrop={handleChatDrop}
+      >
+        {/* Drop-to-upload overlay */}
+        {isDraggingOver && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded-xl pointer-events-none">
+            <p className="text-blue-600 font-semibold text-base">Drop to upload</p>
+          </div>
+        )}
         {/* Top Navbar - Responsive */}
       <div className={`absolute top-0 left-0 right-0 h-14 px-3 sm:px-4 mt-2 mx-2 sm:mx-4 flex items-center backdrop-blur-lg rounded-xl border justify-between shadow-md hover:shadow-lg transition-shadow duration-200 z-10 ${
         recipientTheme === 'dark'
@@ -1582,15 +1650,15 @@ export function DmChatStable({
                                     storeAddReaction(msg.id, reaction.emoji);
                                   }
                                 }}
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors ${
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm border transition-colors ${
                                   hasReacted
                                     ? 'bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200'
                                     : 'bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200'
                                 }`}
                                 title={reaction.users.map((u: { username: string }) => u.username).join(', ')}
                               >
-                                <span className="text-sm">{reaction.emoji}</span>
-                                <span className="font-medium">{reaction.users.length}</span>
+                                <span className="text-base leading-none">{reaction.emoji}</span>
+                                <span className="font-semibold text-xs">{reaction.users.length}</span>
                               </button>
                             );
                           })}
@@ -1600,7 +1668,7 @@ export function DmChatStable({
                               setReactionPickerPos({ x: rect.left, y: rect.top });
                               setReactionPickerMessageId(msg.id);
                             }}
-                            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 border border-gray-200 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors text-xs"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 border border-gray-200 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors text-sm font-medium"
                             title="Add reaction"
                           >
                             +
@@ -1687,18 +1755,32 @@ export function DmChatStable({
           </div>
         )}
 
-        {/* Pending attachment indicator */}
-        {pendingAttachment && !uploadingPaste && (
-          <div className="flex items-center gap-3 px-4 py-3 mb-2 bg-gradient-to-r from-green-50 to-green-100 border-2 border-green-300 rounded-2xl shadow-sm">
-            <Paperclip className="w-5 h-5 text-green-600" />
-            <span className="text-sm text-green-700 font-bold truncate flex-1">{pendingAttachment.name}</span>
-            <button
-              onClick={cancelAttachment}
-              className="text-green-600 hover:text-green-800 hover:bg-green-200 p-1.5 rounded-lg transition-all duration-200"
-              title="Remove attachment"
-            >
-              <X className="w-4 h-4" />
-            </button>
+        {/* Pending attachments thumbnail strip */}
+        {pendingAttachments.length > 0 && !uploadingPaste && (
+          <div className="flex gap-2 px-3 py-2 mb-1 overflow-x-auto">
+            {pendingAttachments.map((att, i) => (
+              <div key={i} className="relative flex-shrink-0 group/att">
+                {att.type.startsWith('image/') || att.type === 'gif' || att.type === 'sticker' ? (
+                  <img src={att.url} alt={att.name} className="h-16 w-16 object-cover rounded-lg border border-gray-200" />
+                ) : att.type.startsWith('video/') ? (
+                  <video src={att.url} className="h-16 w-16 object-cover rounded-lg border border-gray-200" muted />
+                ) : (
+                  <div className="h-16 w-16 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+                    <div className="flex flex-col items-center gap-1 p-1">
+                      <Paperclip className="w-5 h-5 text-gray-400" />
+                      <span className="text-[9px] text-gray-500 text-center truncate w-full">{att.name}</span>
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={() => setPendingAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-700 hover:bg-gray-900 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover/att:opacity-100 transition-opacity"
+                  title="Remove"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -1741,7 +1823,7 @@ export function DmChatStable({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={editingMessage ? "Edit your message..." : (type === 'group' ? `Message ${recipientName}` : `Message @${recipientTag}`)}
-              className={`w-full pl-4 sm:pl-5 text-black/80 pr-12 sm:pr-14 py-3 sm:py-3.5 bg-white border-2 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 transition-all duration-200 shadow-sm ${
+              className={`w-full pl-4 sm:pl-5 text-black/80 pr-12 sm:pr-14 py-3 sm:py-3.5 bg-white border-2 rounded-2xl text-base sm:text-sm font-medium focus:outline-none focus:ring-2 transition-all duration-200 shadow-sm ${
                 editingMessage
                   ? 'border-blue-300 focus:ring-blue-300/40 focus:border-blue-400'
                   : uploadingPaste
@@ -1753,15 +1835,15 @@ export function DmChatStable({
 
             <button
               onClick={editingMessage ? handleSaveEdit : handleSendMessage}
-              disabled={editingMessage ? !editContent.trim() : ((!message.trim() && !pendingAttachment) || connectionStatus !== 'connected')}
+              disabled={editingMessage ? !editContent.trim() : ((!message.trim() && pendingAttachments.length === 0) || connectionStatus !== 'connected')}
               className={`absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:scale-105 ${
                 editingMessage
                   ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
-                  : pendingAttachment
+                  : pendingAttachments.length > 0
                     ? 'bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
                     : 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
               }`}
-              title={editingMessage ? "Save Edit" : pendingAttachment ? "Send with Attachment" : "Send Message"}
+              title={editingMessage ? "Save Edit" : pendingAttachments.length > 0 ? "Send with Attachment" : "Send Message"}
             >
               <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
             </button>
@@ -1821,7 +1903,8 @@ export function DmChatStable({
               onClose={() => setShowGifPicker(false)}
               onGifSelect={(url) => {
                 mediaTypeMapRef.current.set(url, 'gif');
-                setPendingAttachment({ url, name: 'GIF' });
+                setPendingAttachments([{ url, name: 'GIF', size: 0, type: 'gif' }]);
+                inputRef.current?.focus();
               }}
               userId={profile?.id}
               position="top"
@@ -1833,7 +1916,8 @@ export function DmChatStable({
               onClose={() => setShowStickerPicker(false)}
               onStickerSelect={(url) => {
                 mediaTypeMapRef.current.set(url, 'sticker');
-                setPendingAttachment({ url, name: 'Sticker' });
+                setPendingAttachments([{ url, name: 'Sticker', size: 0, type: 'sticker' }]);
+                inputRef.current?.focus();
               }}
               userId={profile?.id}
               position="top"

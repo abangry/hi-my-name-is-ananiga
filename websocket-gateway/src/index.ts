@@ -79,8 +79,18 @@ const typingUsers = new Map<string, Map<string, NodeJS.Timeout>>()
 // Track online users per conversation
 const conversationUsers = new Map<string, Set<string>>()
 
+// Delayed offline timers per user - gives 45s grace period for reconnects/refreshes
+const offlineTimeouts = new Map<string, NodeJS.Timeout>()
+
 io.on('connection', (socket: AuthenticatedSocket) => {
   console.log(`[Connection] ${socket.username}#${socket.tag} connected (${socket.id})`)
+
+  // Cancel any pending offline timer for this user (handles page refresh / reconnect)
+  if (socket.userId && offlineTimeouts.has(socket.userId)) {
+    clearTimeout(offlineTimeouts.get(socket.userId)!)
+    offlineTimeouts.delete(socket.userId)
+    console.log(`[Presence] Cancelled offline timer for ${socket.username} (reconnected)`)
+  }
 
   // Join conversation room
   socket.on('conversation:join', ({ conversation_id, conversation_type }) => {
@@ -788,6 +798,19 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     }
   })
 
+  // Handle profile update - broadcast to all connected clients
+  socket.on('profile:update', ({ display_name, avatar_url, banner_url, bio, profile_theme }) => {
+    console.log(`[Profile] ${socket.username} updated their profile`)
+    io.emit('profile:updated', {
+      user_id: socket.userId,
+      display_name,
+      avatar_url,
+      banner_url,
+      bio,
+      profile_theme
+    })
+  })
+
   // Handle disconnect
   socket.on('disconnect', () => {
     console.log(`[Disconnect] ${socket.username}#${socket.tag} disconnected`)
@@ -803,6 +826,22 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     conversationUsers.forEach((users, room) => {
       users.delete(socket.userId!)
     })
+
+    // Set a 45-second timer to mark user offline.
+    // If they reconnect (page refresh, brief network blip) within that window,
+    // the timer is cancelled in the 'connection' handler above.
+    if (socket.userId) {
+      const userId = socket.userId
+      const timer = setTimeout(async () => {
+        offlineTimeouts.delete(userId)
+        console.log(`[Presence] Marking ${socket.username} offline after disconnect timeout`)
+        await supabase
+          .from('user_presence')
+          .update({ status: 'offline', last_seen: new Date().toISOString() })
+          .eq('user_id', userId)
+      }, 45000) // 45 seconds
+      offlineTimeouts.set(userId, timer)
+    }
   })
 })
 

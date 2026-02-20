@@ -27,10 +27,14 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
 
         const currentStatus = presenceResult.data.status;
 
-        // If user was offline, set them online
-        // If user had a different status (dnd, idle), keep it
         if (currentStatus === "offline") {
-          await updateUserStatus("online");
+          // Restore the last status the user explicitly had (dnd, idle, online)
+          // Falls back to "online" if nothing was ever saved
+          const preferred = (localStorage.getItem("preferredStatus") as "online" | "idle" | "dnd") || "online";
+          await updateUserStatus(preferred);
+        } else {
+          // Save the current active status so we can restore it after reconnects
+          localStorage.setItem("preferredStatus", currentStatus);
         }
 
         // Set up heartbeat to update last_seen every 30 seconds
@@ -53,21 +57,16 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
         // document.addEventListener("visibilitychange", handleVisibilityChange);
 
         // Handle page unload (tab close, navigation away)
-        const handleBeforeUnload = async () => {
-          // Only set offline if user was online
-          // Keep dnd, idle, and already-offline statuses as-is
-          const presenceResult = await getCurrentUserPresence();
-          if (presenceResult.success && presenceResult.data) {
-            const currentStatus = presenceResult.data.status;
-            if (currentStatus === "online") {
-              // Use sendBeacon for reliable last-moment update
-              const endpoint = window.location.origin + "/api/presence/offline";
-              navigator.sendBeacon(endpoint, JSON.stringify({ userId: user.id }));
-
-              // Also try regular update as fallback
-              await updateUserStatus("offline");
-            }
-          }
+        // IMPORTANT: beforeunload handlers must be synchronous - async functions
+        // don't finish before the page closes, so we can't await anything here.
+        const handleBeforeUnload = () => {
+          // Send as Blob so Content-Type: application/json is set correctly
+          const endpoint = window.location.origin + "/api/presence/offline";
+          const blob = new Blob(
+            [JSON.stringify({ userId: user.id })],
+            { type: "application/json" }
+          );
+          navigator.sendBeacon(endpoint, blob);
         };
 
         window.addEventListener("beforeunload", handleBeforeUnload);

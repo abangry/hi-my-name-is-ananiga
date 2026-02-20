@@ -7,6 +7,7 @@ import { IdleArea } from "@/components/dashboard/idle-area";
 import { createClient } from "@/lib/supabase/client";
 import { Menu, ChevronLeft, Users } from "lucide-react";
 import { useUnreadMessages } from "@/lib/hooks/use-unread-messages";
+import { useNotificationStore } from "@/lib/stores/notification-store";
 import { UnifiedSidebar } from "@/components/dashboard/unified-sidebar";
 import { ProtectedWatermark } from "@/components/ui/protected-watermark";
 
@@ -15,12 +16,26 @@ interface MainDashboardProps {
   initialView?: MainView;
   userTag?: string;
   groupChatId?: string;
+  initialDmUser?: {
+    id: string;
+    username: string;
+    tag: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    profile_theme: string | null;
+  } | null;
+  initialGroupData?: {
+    id: string;
+    name: string;
+    icon_url: string | null;
+  } | null;
 }
 
 export type MainView = "friends" | "message-requests" | "inbox" | "dm" | "group-chat";
 
-export function MainDashboard({ initialProfile, initialView = "friends", userTag, groupChatId }: MainDashboardProps) {
+export function MainDashboard({ initialProfile, initialView = "friends", userTag, groupChatId, initialDmUser, initialGroupData }: MainDashboardProps) {
   const supabase = createClient();
+  const totalUnread = useNotificationStore(state => state.totalUnread);
   const [profile, setProfile] = useState<Profile | null>(initialProfile);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentView, setCurrentView] = useState<MainView>(initialView);
@@ -30,13 +45,41 @@ export function MainDashboard({ initialProfile, initialView = "friends", userTag
     avatar: string;
     userId: string;
     profileTheme?: 'light' | 'dark';
-  } | null>(null);
+  } | null>(() => {
+    if (initialDmUser) {
+      return {
+        name: initialDmUser.display_name || initialDmUser.username,
+        tag: initialDmUser.tag,
+        avatar: initialDmUser.avatar_url || '',
+        userId: initialDmUser.id,
+        profileTheme: (initialDmUser.profile_theme as 'light' | 'dark') || 'light',
+      };
+    }
+    return null;
+  });
   const [selectedGroupChat, setSelectedGroupChat] = useState<{
     id: string;
     name: string;
     icon: string | null;
-  } | null>(null);
-  const [isInitializing, setIsInitializing] = useState(true);
+  } | null>(() => {
+    if (initialGroupData) {
+      return {
+        id: initialGroupData.id,
+        name: initialGroupData.name,
+        icon: initialGroupData.icon_url,
+      };
+    }
+    return null;
+  });
+  // data is pre-fetched server-side for DM/group pages, so we can skip the client fetch
+  const [dataFetched, setDataFetched] = useState(() => {
+    if (initialView === "dm" && initialDmUser) return true;
+    if (initialView === "group-chat" && initialGroupData) return true;
+    if (!userTag && !groupChatId) return true;
+    return false;
+  });
+  const [wsReady, setWsReady] = useState(false);
+  const isInitializing = !dataFetched || !wsReady;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [membersSidebarOpen, setMembersSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -108,6 +151,8 @@ export function MainDashboard({ initialProfile, initialView = "friends", userTag
         setSelectedGroupChat(null);
         setCurrentView(initialView);
       }
+      // always mark data as fetched so isInitializing can clear
+      setDataFetched(true);
     };
 
     fetchDmUser();
@@ -136,7 +181,7 @@ export function MainDashboard({ initialProfile, initialView = "friends", userTag
         }
       }
       setTimeout(() => {
-        setIsInitializing(false)
+        setWsReady(true)
       }, 500)
     }
     initWebSocket()
@@ -288,9 +333,14 @@ export function MainDashboard({ initialProfile, initialView = "friends", userTag
           {/* button to show/hide sidebar - pretty standard stuff */}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-all duration-200 flex-shrink-0"
+            className="relative w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-all duration-200 flex-shrink-0"
           >
             {sidebarOpen ? <ChevronLeft className="w-4 h-4 text-gray-600" /> : <Menu className="w-4 h-4 text-gray-600" />}
+            {totalUnread > 0 && (
+              <span className={`absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none pointer-events-none transition-opacity duration-200 ${sidebarOpen ? 'opacity-0' : 'opacity-100'}`}>
+                {totalUnread > 99 ? '99+' : totalUnread}
+              </span>
+            )}
           </button>
 
           {/* shows where you are - like "Home / GroupName" */}

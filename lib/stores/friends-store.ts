@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
+import { wsManager } from '@/lib/websocket-manager'
 
 export interface Friend {
   id: string
@@ -17,6 +18,7 @@ interface FriendsState {
   loading: boolean
   fetchFriends: (userId: string) => Promise<void>
   updateFriendPresence: (friendId: string, status: 'online' | 'idle' | 'dnd' | 'offline', customStatus?: string | null) => void
+  updateFriendProfile: (friendId: string, changes: { display_name?: string | null; avatar_url?: string | null }) => void
   subscribeToPresence: (userId: string) => void
   unsubscribeFromPresence: () => void
 }
@@ -24,6 +26,7 @@ interface FriendsState {
 export const useFriendsStore = create<FriendsState>((set, get) => {
   const supabase = createClient()
   let presenceChannel: any = null
+  let profileUpdateUnsub: (() => void) | null = null
 
   return {
     friends: [],
@@ -50,6 +53,16 @@ export const useFriendsStore = create<FriendsState>((set, get) => {
         friends: state.friends.map((friend) =>
           friend.friend_id === friendId
             ? { ...friend, status, custom_status: customStatus !== undefined ? customStatus : friend.custom_status }
+            : friend
+        ),
+      }))
+    },
+
+    updateFriendProfile: (friendId: string, changes: { display_name?: string | null; avatar_url?: string | null }) => {
+      set((state) => ({
+        friends: state.friends.map((friend) =>
+          friend.friend_id === friendId
+            ? { ...friend, ...changes }
             : friend
         ),
       }))
@@ -89,12 +102,29 @@ export const useFriendsStore = create<FriendsState>((set, get) => {
           }
         )
         .subscribe()
+
+      // Subscribe to profile updates via WebSocket
+      if (profileUpdateUnsub) profileUpdateUnsub()
+      profileUpdateUnsub = wsManager.onProfileUpdate((data) => {
+        const isFriend = get().friends.some(f => f.friend_id === data.user_id)
+        if (isFriend) {
+          console.log('[FriendsStore] Profile update for friend:', data.user_id)
+          get().updateFriendProfile(data.user_id, {
+            display_name: data.display_name,
+            avatar_url: data.avatar_url,
+          })
+        }
+      })
     },
 
     unsubscribeFromPresence: () => {
       if (presenceChannel) {
         presenceChannel.unsubscribe()
         presenceChannel = null
+      }
+      if (profileUpdateUnsub) {
+        profileUpdateUnsub()
+        profileUpdateUnsub = null
       }
     },
   }

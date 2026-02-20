@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { X, Upload, File, Image as ImageIcon, Loader2 } from 'lucide-react'
-import { useFileUpload, isImageFile, isVideoFile, createImagePreview, revokeImagePreview } from '@/lib/hooks/use-file-upload'
+import { X, Upload, File, Loader2 } from 'lucide-react'
+import { useFileUpload, isImageFile, isVideoFile, revokeImagePreview, UploadedFile } from '@/lib/hooks/use-file-upload'
 
 interface FileUploadModalProps {
   isOpen: boolean
   onClose: () => void
-  onUploadComplete: (url: string, fileName: string) => void
+  onUploadComplete: (uploads: UploadedFile[]) => void
   userId: string
   conversationType: 'dm' | 'group'
   conversationId: string
@@ -26,80 +26,69 @@ export function FileUploadModal({
   conversationType,
   conversationId
 }: FileUploadModalProps) {
-  const [selectedFile, setSelectedFile] = useState<FilePreview | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<FilePreview[]>([])
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { uploadFile, uploading, error, reset, maxSizeMB, allowedTypes } = useFileUpload()
+  const { uploadMultiple, uploading, error, reset, maxSizeMB, allowedTypes } = useFileUpload()
 
-  // Clean up preview URL when component unmounts or file changes
+  // Revoke all blob preview URLs on unmount
   useEffect(() => {
     return () => {
-      if (selectedFile?.previewUrl) {
-        revokeImagePreview(selectedFile.previewUrl)
-      }
+      selectedFiles.forEach(f => { if (f.previewUrl) revokeImagePreview(f.previewUrl) })
     }
-  }, [selectedFile])
+  }, [selectedFiles])
 
-  const handleFileSelect = useCallback((file: File) => {
-    // Clean up old preview
-    if (selectedFile?.previewUrl) {
-      revokeImagePreview(selectedFile.previewUrl)
-    }
-
-    const previewUrl = (isImageFile(file) || isVideoFile(file)) ? createImagePreview(file) : null
-    setSelectedFile({ file, previewUrl })
+  const addFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files)
+    const previews: FilePreview[] = arr.map(file => ({
+      file,
+      previewUrl: (isImageFile(file) || isVideoFile(file)) ? URL.createObjectURL(file) : null
+    }))
+    setSelectedFiles(prev => [...prev, ...previews])
     reset()
-  }, [selectedFile, reset])
+  }, [reset])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      handleFileSelect(file)
-    }
+    if (e.target.files?.length) addFiles(e.target.files)
+    // Reset input so selecting same files again works
+    e.target.value = ''
   }
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files)
+  }, [addFiles])
 
-    const file = e.dataTransfer.files[0]
-    if (file) {
-      handleFileSelect(file)
-    }
-  }, [handleFileSelect])
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true) }
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false) }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(true)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => {
+      const f = prev[index]
+      if (f.previewUrl) revokeImagePreview(f.previewUrl)
+      return prev.filter((_, i) => i !== index)
+    })
   }
 
   const handleUpload = async () => {
-    if (!selectedFile) return
-
-    const result = await uploadFile(
-      selectedFile.file,
+    if (!selectedFiles.length) return
+    const results = await uploadMultiple(
+      selectedFiles.map(f => f.file),
       userId,
       conversationType,
       conversationId
     )
-
-    if (result) {
-      onUploadComplete(result.url, result.name)
+    if (results.length > 0) {
+      onUploadComplete(results)
       handleClose()
     }
   }
 
   const handleClose = () => {
-    if (selectedFile?.previewUrl) {
-      revokeImagePreview(selectedFile.previewUrl)
-    }
-    setSelectedFile(null)
+    selectedFiles.forEach(f => { if (f.previewUrl) revokeImagePreview(f.previewUrl) })
+    setSelectedFiles([])
     reset()
     onClose()
   }
@@ -117,100 +106,77 @@ export function FileUploadModal({
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">Upload File</h2>
-          <button
-            onClick={handleClose}
-            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-          >
+          <h2 className="text-lg font-semibold text-gray-900">
+            Upload Files {selectedFiles.length > 0 && <span className="text-sm font-normal text-gray-500">({selectedFiles.length})</span>}
+          </h2>
+          <button onClick={handleClose} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-6 space-y-4">
           {/* Drop zone */}
           <div
             onClick={() => fileInputRef.current?.click()}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            className={`
-              relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all
-              ${dragOver
-                ? 'border-blue-600 bg-blue-600/5'
-                : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-              }
-            `}
+            className={`relative border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+              dragOver ? 'border-blue-600 bg-blue-600/5' : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+            }`}
           >
             <input
               ref={fileInputRef}
               type="file"
+              multiple
               onChange={handleInputChange}
               accept={allowedTypes.join(',')}
               className="hidden"
             />
-
-            {selectedFile ? (
-              <div className="space-y-3">
-                {selectedFile.previewUrl && isVideoFile(selectedFile.file) ? (
-                  <div className="relative mx-auto w-48 h-32 rounded-lg overflow-hidden bg-black">
-                    <video
-                      src={selectedFile.previewUrl}
-                      className="w-full h-full object-contain"
-                      muted
-                    />
-                  </div>
-                ) : selectedFile.previewUrl ? (
-                  <div className="relative mx-auto w-32 h-32 rounded-lg overflow-hidden">
-                    <img
-                      src={selectedFile.previewUrl}
-                      alt="Preview"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="mx-auto w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center">
-                    <File className="w-8 h-8 text-gray-400" />
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm font-medium text-gray-900 truncate max-w-[200px] mx-auto">
-                    {selectedFile.file.name}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {formatFileSize(selectedFile.file.size)}
-                  </p>
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (selectedFile.previewUrl) {
-                      revokeImagePreview(selectedFile.previewUrl)
-                    }
-                    setSelectedFile(null)
-                    reset()
-                  }}
-                  className="text-xs text-red-500 hover:text-red-600"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : (
-              <>
-                <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-sm font-medium text-gray-700">
-                  Drop a file here or click to browse
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Max {maxSizeMB}MB - Images, Videos, PDF, Text, ZIP
-                </p>
-              </>
-            )}
+            <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm font-medium text-gray-700">
+              {selectedFiles.length > 0 ? 'Add more files' : 'Drop files here or click to browse'}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Max {maxSizeMB}MB each · Images, Videos, PDF, Text, ZIP
+            </p>
           </div>
 
-          {/* Error message */}
+          {/* Selected files preview grid */}
+          {selectedFiles.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+              {selectedFiles.map((f, i) => (
+                <div key={i} className="relative group rounded-lg overflow-hidden border border-gray-200 bg-gray-50 aspect-square">
+                  {f.previewUrl && isImageFile(f.file) ? (
+                    <img src={f.previewUrl} alt={f.file.name} className="w-full h-full object-cover" />
+                  ) : f.previewUrl && isVideoFile(f.file) ? (
+                    <video src={f.previewUrl} className="w-full h-full object-cover" muted />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-2 gap-1">
+                      <File className="w-6 h-6 text-gray-400" />
+                      <span className="text-[10px] text-gray-500 text-center truncate w-full px-1">{f.file.name}</span>
+                    </div>
+                  )}
+                  {/* Size label */}
+                  <span className="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-[9px] text-center py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {formatFileSize(f.file.size)}
+                  </span>
+                  {/* Remove button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeFile(i) }}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/60 hover:bg-black/80 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Error */}
           {error && (
-            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
@@ -227,19 +193,13 @@ export function FileUploadModal({
           </button>
           <button
             onClick={handleUpload}
-            disabled={!selectedFile || uploading}
+            disabled={selectedFiles.length === 0 || uploading}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-[#04527a] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {uploading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading...
-              </>
+              <><Loader2 className="w-4 h-4 animate-spin" />Uploading...</>
             ) : (
-              <>
-                <Upload className="w-4 h-4" />
-                Upload
-              </>
+              <><Upload className="w-4 h-4" />{selectedFiles.length > 1 ? `Upload ${selectedFiles.length} files` : 'Upload'}</>
             )}
           </button>
         </div>

@@ -141,6 +141,17 @@ export function UserProfileModal({ userId, isOpen, onClose, currentUserId }: Use
     fetchProfile()
   }, [isOpen, userId, currentUserId, supabase, fetchBlockedUsers, fetchMutedConversations])
 
+  // Live-sync profile changes while modal is open
+  useEffect(() => {
+    if (!isOpen || !userId) return
+    const unsubProfile = wsManager.onProfileUpdate((data) => {
+      if (data.user_id === userId) {
+        setProfile(prev => prev ? { ...prev, ...data } : prev)
+      }
+    })
+    return () => { unsubProfile() }
+  }, [isOpen, userId])
+
   // Handle block/unblock
   const handleBlockToggle = async () => {
     if (!currentUserId || currentUserId === userId) return
