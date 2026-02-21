@@ -89,7 +89,6 @@ const totals = [
   { label: "Group messages", value: groupMsgsCount.count ?? 0 },
 ];
 
-  // Paginated note pages (edit / extend freely)
 const notePages = [
 `If you're reading this, it means the platform is gone.
 
@@ -240,14 +239,14 @@ Byeeeeeeeeeee Mayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.`,
             </div>
 
             <div className="p-6 sm:p-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {(users.data ?? []).map((u) => {
+{(users.data ?? []).map((u) => {
                 const name = u.display_name || u.username;
                 const bio = (u.bio || "").trim();
 
                 return (
                   <div
                     key={u.id}
-                    className="rounded-3xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition overflow-hidden"
+                    className="rounded-3xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition overflow-hidden flex flex-col"
                   >
                     {/* Banner */}
                     <div className="relative h-20 bg-gray-50">
@@ -264,10 +263,10 @@ Byeeeeeeeeeee Mayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy.`,
                       <div className="absolute inset-0 bg-gradient-to-t from-white/25 to-transparent" />
                     </div>
 
-                    <div className="p-5">
+                    <div className="p-5 flex-1">
                       <div className="flex items-start gap-3">
                         {/* Avatar */}
-                        <div className="relative h-12 w-12 shrink-0 rounded-2xl overflow-hidden border border-gray-200 bg-gray-50">
+                        <div className="relative h-12 w-12 shrink-0 rounded-full overflow-hidden border border-gray-200 bg-gray-50">
                           {u.avatar_url ? (
                             <img
                               src={u.avatar_url}
