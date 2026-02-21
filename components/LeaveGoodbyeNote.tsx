@@ -89,7 +89,7 @@ export default function LeaveGoodbyeNote() {
       }
 
       setStatus("sent");
-      setMsg("Sent. Thank you 🖤");
+      setMsg("Sent. Thank you");
 
       setTimeout(() => setText(""), CLEAR_TEXT_MS);
 
@@ -107,8 +107,6 @@ export default function LeaveGoodbyeNote() {
 
   return (
     <>
-      {open ? <div className="ml-1 mb-2 text-xs text-gray-500" /> : null}
-
       <div className="mt-6 flex justify-start">
         <div
           ref={pillRef}
@@ -163,7 +161,16 @@ export default function LeaveGoodbyeNote() {
               className="w-full pl-3 bg-transparent outline-none text-gray-700 placeholder:text-gray-400 font-medium"
             />
 
-            <span className="text-xs text-gray-400 tabular-nums shrink-0">{left}</span>
+            {msg ? (
+              <span className={[
+                "text-xs tabular-nums shrink-0 font-medium",
+                status === "error" ? "text-red-500" : "text-green-600",
+              ].join(" ")}>
+                {msg}
+              </span>
+            ) : (
+              <span className="text-xs text-gray-400 tabular-nums shrink-0">{left}</span>
+            )}
 
             <button
               type="button"
@@ -187,17 +194,6 @@ export default function LeaveGoodbyeNote() {
         </div>
       </div>
 
-    
-      {msg ? (
-        <div
-          className={[
-            "mt-2 ml-4 text-xs",
-            status === "error" ? "text-red-600" : "text-gray-600",
-          ].join(" ")}
-        >
-          {msg}
-        </div>
-      ) : null}
     </>
   );
 }
