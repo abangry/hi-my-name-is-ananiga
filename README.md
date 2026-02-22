@@ -1,632 +1,635 @@
-chaos answer...
-
-
-1) Client
-
-NEXT_PUBLIC_SUPABASE_URL=https://xyz.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=xyz
-KLIPY=xyz
-NEXT_PUBLIC_KLIPY_API_KEY=xyz
-NEXT_PUBLIC_WS_URL=http://localhost:3001
-
-
-2) Socket 
-
-PORT=3001
-SUPABASE_URL=https://xyz.supabase.co
-SUPABASE_ANON_KEY=xyz
-SUPABASE_SERVICE_ROLE_KEY=xyz
-NODE_ENV=development
-
----
-
-## Table of Contents
-
-1. [Architecture Overview](#architecture-overview)
-2. [Technology Stack](#technology-stack)
-3. [Project Structure](#project-structure)
-4. [Database Schema](#database-schema)
-5. [Real-time System](#real-time-system)
-6. [Authentication Flow](#authentication-flow)
-7. [Key Features](#key-features)
-8. [Deployment Guide](#deployment-guide)
-9. [Environment Variables](#environment-variables)
-10. [Development Setup](#development-setup)
-
----
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         CLIENT (Browser)                        │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   Next.js App   │  │  Zustand Stores │  │ WebSocket Client│ │
-│  │   (React 19)    │  │  (State Mgmt)   │  │ (Socket.io)     │ │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘ │
-└───────────┼────────────────────┼────────────────────┼──────────┘
-            │                    │                    │
-            ▼                    ▼                    ▼
-┌───────────────────┐  ┌─────────────────┐  ┌─────────────────────┐
-│   Next.js API     │  │    Supabase     │  │  WebSocket Gateway  │
-│   Routes          │  │  (PostgreSQL)   │  │  (Node.js/Socket.io)│
-│   /app/api/*      │  │                 │  │  Port 3001          │
-└───────────────────┘  └─────────────────┘  └─────────────────────┘
-            │                    │                    │
-            └────────────────────┼────────────────────┘
-                                 ▼
-                    ┌─────────────────────────┐
-                    │      Supabase Cloud     │
-                    │  ┌───────────────────┐  │
-                    │  │    PostgreSQL     │  │
-                    │  │    Database       │  │
-                    │  └───────────────────┘  │
-                    │  ┌───────────────────┐  │
-                    │  │   Auth Service    │  │
-                    │  └───────────────────┘  │
-                    │  ┌───────────────────┐  │
-                    │  │  Storage (Files)  │  │
-                    │  └───────────────────┘  │
-                    │  ┌───────────────────┐  │
-                    │  │  Realtime (PG)    │  │
-                    │  └───────────────────┘  │
-                    └─────────────────────────┘
-```
-
-### Data Flow
-
-1. **HTTP Requests**: Next.js handles page rendering and API routes
-2. **Database Operations**: Server Actions communicate with Supabase
-3. **Real-time Messages**: WebSocket Gateway handles instant messaging
-4. **State Management**: Zustand stores manage client-side state
-5. **Authentication**: Supabase Auth with JWT tokens
-
----
-
-## Technology Stack
-
-### Frontend
-- **Next.js 15** - React framework with App Router
-- **React 19** - UI library
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **Zustand** - State management
-- **Socket.io Client** - WebSocket client
-- **Framer Motion** - Animations
-- **Lucide React** - Icons
-
-### Backend
-- **Supabase** - Backend-as-a-Service
-  - PostgreSQL database
-  - Authentication
-  - Row Level Security (RLS)
-  - Realtime subscriptions
-  - Storage (avatars, attachments)
-- **Node.js WebSocket Server** - Real-time messaging gateway
-  - Socket.io
-  - JWT authentication
-
----
-
-## Project Structure
-
-```
-chat-app/
-├── app/                          # Next.js App Router
-│   ├── api/                      # API routes
-│   │   └── upload/               # File upload endpoints
-│   ├── auth/                     # Authentication pages
-│   │   ├── sign-in/
-│   │   ├── sign-up/
-│   │   ├── forgot-password/
-│   │   └── confirm-signup/
-│   ├── me/                       # Main dashboard (protected)
-│   │   ├── page.tsx              # Idle/home area
-│   │   ├── [user_tag]/           # DM chat routes
-│   │   │   └── page.tsx
-│   │   └── group_[id]/           # Group chat routes
-│   │       └── page.tsx
-│   ├── layout.tsx                # Root layout
-│   ├── page.tsx                  # Landing page
-│   └── globals.css               # Global styles
-│
-├── components/                   # React components
-│   ├── auth/                     # Auth-related components
-│   │   ├── auth-form.tsx
-│   │   └── auth-scene.tsx
-│   ├── dashboard/                # Main app components
-│   │   ├── main-dashboard.tsx    # Main layout wrapper
-│   │   ├── unified-sidebar.tsx   # Navigation sidebar
-│   │   ├── dm-chat-ws.tsx        # DM chat (WebSocket)
-│   │   ├── dm-chat-stable.tsx    # DM chat (Supabase)
-│   │   ├── group-chat.tsx        # Group chat
-│   │   └── idle-area.tsx         # Home/idle screen
-│   ├── modals/                   # Modal dialogs
-│   │   ├── user-profile-modal.tsx
-│   │   ├── settings-modal.tsx
-│   │   ├── create-group-chat-modal.tsx
-│   │   ├── group-settings-modal.tsx
-│   │   └── invite-to-group-modal.tsx
-│   ├── ui/                       # Reusable UI components
-│   │   ├── button.tsx
-│   │   ├── input.tsx
-│   │   ├── typing-indicator.tsx
-│   │   ├── message-context-menu.tsx
-│   │   └── ...
-│   └── loading/                  # Loading states
-│       └── chat-skeleton.tsx
-│
-├── lib/                          # Core libraries
-│   ├── actions/                  # Server Actions
-│   │   ├── friends.ts            # Friend management
-│   │   ├── messages.ts           # Message operations
-│   │   ├── group-chats.ts        # Group chat operations
-│   │   ├── blocks.ts             # Block/mute functionality
-│   │   ├── presence.ts           # User presence/status
-│   │   └── profile.ts            # Profile management
-│   ├── hooks/                    # Custom React hooks
-│   │   ├── use-chat-socket-singleton.ts  # Chat WebSocket hook
-│   │   ├── use-global-socket.ts          # Global WebSocket events
-│   │   └── use-typing-indicator.ts       # Typing indicator
-│   ├── stores/                   # Zustand state stores
-│   │   ├── chat-store.ts         # Chat state management
-│   │   ├── friends-store.ts      # Friends list state
-│   │   ├── block-store.ts        # Blocked users state
-│   │   └── notification-store.ts # Notifications state
-│   ├── supabase/                 # Supabase clients
-│   │   ├── client.ts             # Browser client
-│   │   ├── server.ts             # Server client
-│   │   └── middleware.ts         # Auth middleware
-│   ├── types/                    # TypeScript types
-│   │   └── database.types.ts     # Database types
-│   ├── utils/                    # Utility functions
-│   │   └── sounds.ts             # Notification sounds
-│   └── websocket-manager.ts      # WebSocket singleton
-│
-├── supabase/                     # Database
-│   ├── complete_schema.sql       # Full database schema
-│   └── migrations/               # Individual migrations
-│
-├── websocket-gateway/            # WebSocket server
-│   ├── src/
-│   │   └── index.ts              # Main server file
-│   ├── package.json
-│   └── .env.example
-│
-├── public/                       # Static assets
-├── package.json
-├── tailwind.config.ts
-├── tsconfig.json
-└── next.config.ts
-```
-
----
-
-## Database Schema
-
-The database uses PostgreSQL via Supabase. The full schema is in `supabase/complete_schema.sql`.
-
-### Core Tables
-
-| Table | Description |
-|-------|-------------|
-| `profiles` | User profiles (username, tag, avatar, bio) |
-| `friendships` | Friend relationships |
-| `friend_requests` | Pending friend requests |
-| `direct_message_channels` | DM channel metadata |
-| `direct_message_participants` | Users in each DM channel |
-| `direct_messages` | DM message content |
-| `group_chats` | Group chat metadata |
-| `group_chat_members` | Group membership |
-| `group_chat_messages` | Group message content |
-| `user_presence` | Online status & custom status |
-| `blocked_users` | User blocks |
-| `muted_conversations` | Muted DMs/groups |
-| `message_read_status` | Read receipts |
-
-### Key Functions (RPCs)
-
-- `get_or_create_dm_channel` - Get/create DM channel between users
-- `get_friends_with_dm_info` - Get friends list with DM data
-- `get_group_chats_for_user` - Get user's group chats
-- `block_user` / `unblock_user` - Block management
-- `send_friend_request` / `accept_friend_request` - Friend system
-- `mark_dm_messages_as_read` / `mark_group_messages_as_read` - Read status
-
----
-
-## Real-time System
-
-### WebSocket Gateway (`websocket-gateway/`)
-
-A separate Node.js server handles real-time messaging:
-
-**Events Handled:**
-- `message:send` - Send new message
-- `message:edit` - Edit existing message
-- `message:delete` - Delete message
-- `typing:start` / `typing:stop` - Typing indicators
-- `conversation:join` / `conversation:leave` - Room management
-- `group:invite` / `group:leave` / `group:update` - Group management
-- `friend:request_action` - Friend requests
-- `user:block` / `user:unblock` - Block management
-
-**Events Emitted:**
-- `message:received` - New message broadcast
-- `message:persisted` - Message saved confirmation
-- `message:edited` / `message:deleted` - Edit/delete broadcasts
-- `typing:update` / `typing:global` - Typing indicator broadcasts
-- `sidebar:message` / `sidebar:read` - Sidebar updates
-- `group:left` / `group:invited` / `group:updated` - Group events
-- `friend:request` - Friend request notifications
-
-### Client-Side WebSocket Manager (`lib/websocket-manager.ts`)
-
-A singleton class that manages the WebSocket connection:
-- Automatic reconnection
-- Event subscription system
-- Room management
-- Typing indicator coordination
-
----
-
-## Authentication Flow
-
-1. User signs up/signs in via Supabase Auth
-2. Supabase returns JWT access token
-3. Token stored in cookies (handled by `@supabase/ssr`)
-4. Middleware validates token on protected routes
-5. WebSocket server validates token for real-time connections
-
-### Protected Routes
-
-All routes under `/me/*` require authentication. The middleware in `middleware.ts` handles redirection.
-
----
-
-## Key Features
-
-### Direct Messages
-- One-on-one messaging
-- Real-time typing indicators
-- Message editing and deletion
-- Read receipts
-- User blocking/muting
-
-### Group Chats
-- Multi-user conversations
-- Group creation and management
-- Member invitations
-- Group settings (name, icon)
-- System messages (join/leave/invite)
-
-### Friend System
-- Send/accept/decline friend requests
-- Friends list with online status
-- Quick DM access from friends
-
-### User Presence
-- Online/Idle/DND/Invisible status
-- Custom status messages
-- Real-time status updates
-
-### Notifications
-- Unread message counts
-- Sound notifications
-- Browser tab title updates
-
----
-
-## Deployment Guide
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-- Supabase account
-- Hosting provider (Vercel, Railway, etc.)
-
-### Step 1: Clone Repository
-
-```bash
-git clone <repository-url>
-cd chat-app
-```
-
-### Step 2: Set Up Supabase
-
-1. Create a new Supabase project at [supabase.com](https://supabase.com)
-
-2. Go to **SQL Editor** in your Supabase dashboard
-
-3. Copy the contents of `supabase/complete_schema.sql` and run it
-
-4. Go to **Settings > API** and note down:
-   - Project URL
-   - `anon` public key
-   - `service_role` secret key
-
-5. Go to **Authentication > Providers** and configure:
-   - Enable Email provider
-   - (Optional) Enable OAuth providers
-
-6. Go to **Storage** and verify these buckets exist:
-   - `avatars`
-   - `banners`
-   - `group-icons`
-   - `chat-attachments`
-
-### Step 3: Configure Environment Variables
-
-Create `.env.local` in the root directory:
-
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-
-# WebSocket Gateway URL (for client)
-NEXT_PUBLIC_WS_URL=http://localhost:3001
-
-# Klipy API (for GIFs/stickers) - Get free key at klipy.co
-NEXT_PUBLIC_KLIPY_API_KEY=your-klipy-api-key
-```
-
-Create `.env` in `websocket-gateway/`:
-
-```env
-PORT=3001
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-NODE_ENV=development
-```
-
-### Step 4: Install Dependencies
-
-```bash
-# Main app
-npm install
-
-# WebSocket gateway
-cd websocket-gateway
-npm install
-cd ..
-```
-
-### Step 5: Run Development Servers
-
-**Terminal 1 - Next.js App:**
-```bash
-npm run dev
-```
-
-**Terminal 2 - WebSocket Gateway:**
-```bash
-cd websocket-gateway
-npm run dev
-```
-
-The app will be available at `http://localhost:3000`
-
-### Step 6: Production Deployment
-
-> **IMPORTANT:** The WebSocket server **cannot** be hosted on Vercel. Vercel only supports serverless functions which timeout after 10-60 seconds and don't support persistent WebSocket connections. You must use a different hosting provider for the WebSocket gateway.
-
-#### Recommended Hosting Setup
-
-| Component | Recommended Host | Why |
-|-----------|------------------|-----|
-| Next.js App | Vercel | Free tier, optimized for Next.js, automatic deployments |
-| WebSocket Gateway | Render | Free tier (750 hrs/month), supports WebSockets, auto-deploy |
-
----
-
-#### Step 6.1: Deploy WebSocket Gateway (Render)
-
-1. **Create Render Account**
-   - Go to [render.com](https://render.com) and sign up (free tier: 750 hours/month - enough for always-on)
-
-2. **Create New Web Service**
-   - Click **"New +"** → **"Web Service"**
-   - Connect your GitHub account and select your repository
-
-3. **Configure Service**
-   - **Name:** `chat-websocket-gateway` (or whatever you want)
-   - **Root Directory:** `websocket-gateway`
-   - **Runtime:** Node
-   - **Build Command:** `npm install && npm run build`
-   - **Start Command:** `npm start`
-   - **Instance Type:** Free
-
-4. **Add Environment Variables**
-   - In the **Environment** section, add:
-   ```
-   SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_ANON_KEY=your-anon-key
-   SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-   NODE_ENV=production
-   ```
-   - Note: Render auto-assigns `PORT`, don't set it manually
-
-5. **Deploy**
-   - Click **"Create Web Service"**
-   - Render will build and deploy automatically
-   - You'll get a URL like `https://chat-websocket-gateway.onrender.com`
-   - **Save this URL** - you'll need it for the Next.js deployment
-
-> **Note:** Free Render services spin down after 15 minutes of inactivity. The first request after spin-down takes ~30 seconds. For production with instant response, consider their paid tier ($7/month).
-
----
-
-#### Step 6.2: Update CORS Configuration
-
-Before deploying the Next.js app, update the CORS origins in `websocket-gateway/src/index.ts` to allow your Vercel domain:
-
-```typescript
-const io = new Server(httpServer, {
-  cors: {
-    origin: [
-      'https://your-app.vercel.app',      // Your Vercel domain
-      'https://your-custom-domain.com',   // Custom domain (if any)
-      'http://localhost:3000'             // Keep for local development
-    ],
-    credentials: true
+# Socket.IO Gateway Deployment Playbook
+
+This is some end-to-end instructions on hosting the socket, this is a very detailed version so you should be done in about 30 minutes or so. Also before you start you should DEFINETLY clone the project on your machine, make a repository and post the project in your OWN repository.
+
+**IMPORTANT, before you begin make sure you do this:**
+
+The best route is to host the client side first, simply go to vercel, connect with your Github, choose your repository, and make sure to add each environment variable with the proper value, I think you already have all the variables namings in the .env.example, but if I forgot any here is the full list:
+
+- NEXT_PUBLIC_SUPABASE_URL=xyz
+- NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=xyz
+- KLIPY=xyz
+- NEXT_PUBLIC_KLIPY_API_KEY=xyz
+- NEXT_PUBLIC_WS_URL=http://localhost:3001 / https://socket.xyz.xyz
+**(when you work on the platform locally, do 3001, but when hosting the client side, put the  subdomain and your domain)**
+- SUPABASE_SERVICE_ROLE_KEY=xxxxx **(that was used for the goodbye page so you don't have to use it) 0/1**
+- GOODBYE_RATE_SALT=xyz **(that's just for the goodbye page, you don't actually need that) 1/1**
+- NEXT_PUBLIC_SITE_URL=https://xyz.xyz
+
+#
+
+And  to remove this entire goodbye page from the client side, you simply need to delete the ```middleware.ts``` file, delete the entire ```app/api/goodbye``` folder. And replace the ```app/page.tsx``` file with:
+
+```tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+import { MessageCircle, Users, Shield, Zap } from "lucide-react";
+
+export default function Home() {
+  const router = useRouter();
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        router.push("/@me");
+      } else {
+        setIsChecking(false);
+      }
+    };
+
+    checkAuth();
+  }, [router]);
+
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
+
+  return (
+    <main className="min-h-screen bg-gray-50">
+      {/* Navbar */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-sm border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <Link href="/" className="text-xl font-bold text-gray-900">
+              ChatApp
+            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/auth?mode=login"
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                Login
+              </Link>
+              <Link
+                href="/auth?mode=signup"
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Sign Up
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6">
+            Connect with anyone,{" "}
+            <span className="text-blue-600">anywhere</span>
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+            A simple, fast, and secure chat application. Start conversations with friends, create groups, and stay connected.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link
+              href="/auth?mode=signup"
+              className="px-8 py-3 text-lg font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Get Started Free
+            </Link>
+            <Link
+              href="/auth?mode=login"
+              className="px-8 py-3 text-lg font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Sign In
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-white">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-12">
+            Everything you need to chat
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <FeatureCard
+              icon={<MessageCircle className="w-6 h-6" />}
+              title="Direct Messages"
+              description="Chat one-on-one with friends and contacts"
+            />
+            <FeatureCard
+              icon={<Users className="w-6 h-6" />}
+              title="Group Chats"
+              description="Create groups for team discussions"
+            />
+            <FeatureCard
+              icon={<Zap className="w-6 h-6" />}
+              title="Real-time"
+              description="Instant message delivery with WebSocket"
+            />
+            <FeatureCard
+              icon={<Shield className="w-6 h-6" />}
+              title="Secure"
+              description="Your conversations are private and protected"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-8 px-4 sm:px-6 lg:px-8 border-t border-gray-200">
+        <div className="max-w-6xl mx-auto text-center text-gray-500 text-sm">
+          Built with Next.js, Supabase, and WebSocket
+        </div>
+      </footer>
+    </main>
+  );
+}
+
+function FeatureCard({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="p-6 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+      <div className="w-12 h-12 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mb-4">
+        {icon}
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
+      <p className="text-gray-600 text-sm">{description}</p>
+    </div>
+  );
+}
+
+```
+
+and also replace the ```app/me/layout.tsx``` with:
+
+```tsx
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+
+export default async function MeLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/auth");
+  }
+
+  return (
+    <div className="min-h-screen h-screen w-full overflow-hidden bg-gray-50">
+      {children}
+    </div>
+  );
+}
+```
+
+after that you can also safely delete ```components/NotePager.tsx```, ```components/LeaveGoodbyeNote.tsx``` and ```lib/supabase/admin.ts```.
+
+I have a feeling that you won't check the commits history and think that I forgot about this, just a wild guess tho.
+
+And for the socket you will need to manually create the .env file **after** you cloned the project, with these commands:
+
+```cd ~/YOURREPONAME/websocket-gateway``` and ```touch .env```, to see the .env file you can do ```ls -a``` and to open it use ```nano .env```, and simply paste these variables with the correct value:
+
+- NODE_ENV=production
+- PORT=3001
+- IP_HASH_SALT=xyz **(choose a random 32-character string, I recommend to generate one using ```openssl rand -hdex 32```)**
+- CLIENT_ORIGINS=https://xyz.xyz,https://www.xyz.xyz **(your client domain, exactly like that)**
+- SUPABASE_URL=xyz
+- SUPABASE_SERVICE_ROLE_KEY=xyz
+
+---
+
+## Target architecture 
+
+**Public:** `https://socket.xyz.xyz` → **Caddy (80/443)**  
+**Private:** Caddy → `127.0.0.1:3001` → **Node/Socket.IO app**
+
+In this setup **only 80/443 are public**. Port `3001` stays private.
+
+---
+
+## Prerequisites
+
+- Ubuntu VM on GCE
+- A domain you control 
+- The repo with websocket-gateway
+- SSH access to the VM (done by default)
+
+
+---
+
+## Step 0/2 — Create a Google Cloud account
+
+###  Sign up
+
+Go to:  https://cloud.google.com
+
+Click Get started for free
+
+Sign in with Google
+
+Add billing (required, but free tier is enough)
+
+---
+
+## Step 1/2 — Create a Virtual Machine
+
+### 1. Open the Google Cloud Console
+
+Go to:  https://console.cloud.google.com
+
+Top-left: Select project → New project
+
+Name it something like: socket-gateway
+
+### 2. Create the VM
+
+In the top search bar, type Compute Engine
+
+Click VM instances
+
+Click Create instance
+
+### 3. VM settings (IMPORTANT)
+
+Use these exact values if unsure:
+#
+name: 
+```bash
+socket-vm
+```
+#
+region: 
+```bash
+any close to you, but I recommend europe
+```
+#
+machine type: 
+```bash
+e2-micro (cheap & enough for socket)
+```
+#
+### Boot disk
+
+- Click Change
+
+- OS: Ubuntu
+
+- Version: Ubuntu 22.04 LTS
+
+Click Select
+#
+### Firewall
+ Check:
+
+- Allow HTTP traffic
+
+- Allow HTTPS traffic
+
+Click Create
+#
+Wait around 1 minute
+
+---
+## Before proceeding, setup Firewall Rules:
+
+### 1. In the top search bar, type:
+```bash
+Firewall
+```
+### 2. Click “Firewall rules” and then click on "Create firewall rule", this first one is for HTTP (80)
+#
+name
+```bash
+allow-http
+```
+#
+Direction of traffic
+```bash
+ingress
+```
+#
+targets
+```bash
+All instances in the network
+```
+#
+source IPv4 ranges
+```bash
+0.0.0.0/0
+```
+#
+protocols and ports
+- select: Specified protocols and ports
+- check TCP
+- ports:
+```bash
+80
+```
+
+**Click Crate**
+
+#
+### 3. Crate second firewall rule for HTTPS (port 433)
+
+#
+name
+```bash
+allow-https
+```
+#
+Direction of traffic
+```bash
+ingress
+```
+#
+targets
+```bash
+All instances in the network
+```
+#
+source IPv4 ranges
+```bash
+0.0.0.0/0
+```
+#
+protocols and ports
+-
+- check TCP
+- ports:
+```bash
+443
+```
+
+**Click Create**
+
+#
+
+## Step 2/2 — Connect to your VM (SSH)
+
+1. In VM instances
+
+2. Click SSH next to your VM
+
+3. A terminal window opens in your browser
+
+**You are now inside your server.**
+
+
+---
+
+## Setup 0/3 - Install basic tools on the server
+
+Copy & paste one block at a time.
+```bash
+sudo apt update && sudo apt -y upgrade
+sudo apt install -y curl git build-essential
+```
+### Explanation:
+
+- curl → download tools
+
+- git → get code from GitHub
+
+- build-essential → needed to compile Node modules
+
+---
+
+## Setup 1/3 - Install Node.js (JavaScript runtime)
+
+
+Node.js is what runs your socket server.
+```bash
+
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+Verify:
+```bash
+
+node -v
+npm -v
+```
+If you see any versions then you did good.
+
+---
+
+## Setup 2/3 - Upload your project code
+
+Before uploading the code, as I said in the beginning you should clone from your OWN repository, that's a relatively important detail.
+```basj
+git clone https://github.com/YOURNAME/YOURREPO.git
+cd YOURREPO/websocket-gateway
+```
+IMPORTANT is to CD into the SOCKET, dont leave the directory on the entire project, normally you would make another repository just for the websocket and one for the client, but that's the way I did and it works perfectly, this is not a high-scale project so you should be good.
+
+
+---
+
+## Setup 3/3 - Install dependencies & build and Run the socket once
+
+### install all the packages you need:
+```bash
+npm ci
+npm run build
+```
+btw that ci stands for clean install, it's a better version of simple ```npm i```, both works.
+
+### run the socker once for test
+```bash
+npm run start
+```
+If no errors → press CTRL + C to stop it.
+
+---
+
+## Config 0/3  — Keep the server running w PM2
+
+### PM2 keeps your app alive even if:
+
+- SSH closes
+
+- VM restarts
+
+- App crashes
+
+### Install PM2
+```bash
+sudo npm i -g pm2
+```
+### Start the socket gateway
+```bash
+pm2 start npm --name websocket-gateway -- start
+```
+### Save the process:
+```bash
+pm2 save
+```
+### Enable auto-start on reboot
+```bash
+pm2 startup
+```
+- PM2 will print a long command starting with sudo env PATH=...
+- **Copy-paste and run that exact command** (VERY important)
+
+### Then:
+```bash
+pm2 save
+```
+### Check status:
+```bash
+pm2 status
+pm2 logs websocket-gateway
+```
+---
+
+## Config 1/3  — Buy a domain
+
+
+### You can use:
+
+- Namecheap
+
+- Google Domains
+
+- Cloudflare
+
+Literally any provider, but Namecheap is the easiest in my opinion.
+
+
+---
+
+## Config 2/3  — Point domain to your VM
+
+
+### 1. Get your VM external IP
+
+In Google Cloud:
+
+- VM instances → copy External IP
+
+Example:
+```bash
+34.xxx.xxx.xxx
+```
+### 2. Create DNS record
+
+In your domain provider:
+
+- Type: A
+- Host: socket
+- Value (IP): VM_EXTERNAL_IP
+
+This creates:
+```bash
+socket.xyz.com
+```
+Wait a few mins and then test with:
+```bash
+ping socket.xyz.com
+```
+---
+
+## Config 3/3  — Install Caddy (for HTTPS)
+
+
+### 1. Caddy is what:
+
+- handles https  automatically
+
+- encrypts
+
+- and proxies traffic to node
+```bash
+sudo apt install -y caddy
+caddy version
+```
+### 2. Configure Caddy
+**Find the Caddy config file**, caddy's main file lives somewhere here:
+```bash
+/etc/caddy/Caddyfile
+```
+Edit it:
+```
+sudo nano /etc/caddy/Caddyfile
+```
+Replace everything inside with:
+```caddyfile
+socket.xyz.xyz {
+  reverse_proxy 127.0.0.1:3001
+}
+```
+*Save (```CTRL + O```, Enter, ```CTRL + X```)*
+
+Restart Caddy:
+```bash
+sudo systemctl restart caddy
+```
+---
+
+## 0/0 Fix — In case you get “browser loads forever” like I did
+
+### Add a simple HTTP response so browsers don’t hang
+Simply go to:
+```bash
+~/websocket-gateway/src/index.ts
+```
+Do:
+```bash
+nano index.ts
+```
+And look where you find the line:
+```ts
+// Create HTTP server
+const httpServer = createServer()
+```
+And replace it with:
+```ts
+// Create HTTP server (respond to normal browser requests so it doesn't "load forever")
+const httpServer = createServer((req, res) => {
+  const url = req.url || "/"
+
+  // Basic health check + root
+  if (url === "/" || url === "/health") {
+    res.writeHead(200, { "Content-Type": "text/plain" })
+    return res.end("OK")
+  }
+
+  // Socket.IO will handle /socket.io/* internally
+  // For everything else, return 404 so the browser doesn't hang
+  res.writeHead(404, { "Content-Type": "text/plain" })
+  res.end("Not Found")
 })
 ```
 
-Commit and push this change - Render will auto-redeploy.
-
----
-
-#### Step 6.3: Deploy Next.js App (Vercel)
-
-1. **Create Vercel Account**
-   - Go to [vercel.com](https://vercel.com) and sign up
-
-2. **Import Project**
-   - Click **"Add New"** → **"Project"**
-   - Import your GitHub repository
-
-3. **Configure Project**
-   - Framework Preset: Next.js (auto-detected)
-   - Root Directory: `.` (leave default)
-
-4. **Add Environment Variables**
-   - In the **Environment Variables** section, add:
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-   NEXT_PUBLIC_WS_URL=wss://chat-websocket-gateway.onrender.com
-   NEXT_PUBLIC_KLIPY_API_KEY=your-klipy-api-key
-   ```
-   - **Note:** Use `wss://` (not `https://`) for the WebSocket URL in production
-
-5. **Deploy**
-   - Click **Deploy**
-   - Your app will be live at `https://your-app.vercel.app`
-
----
-
-#### Step 6.4: Verify Deployment
-
-1. Open your Vercel URL in a browser
-2. Sign up/sign in to test authentication
-3. Open browser DevTools → Network tab → WS filter
-4. Verify WebSocket connection shows "101 Switching Protocols"
-5. Test sending messages between two accounts
-
-#### Troubleshooting Production Issues
-
-| Issue | Solution |
-|-------|----------|
-| WebSocket won't connect | Check CORS origins include your Vercel domain |
-| "wss://" connection failed | Ensure Render is using HTTPS (it does by default) |
-| Messages not persisting | Verify `SUPABASE_SERVICE_ROLE_KEY` is set in Render |
-| Auth not working | Check Supabase Auth settings allow your domain |
-| Slow first connection | Free Render services spin down after inactivity - first request takes ~30s |
-
----
-
-## Environment Variables
-
-### Next.js App (`.env.local`)
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Yes |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
-| `NEXT_PUBLIC_WS_URL` | WebSocket server URL | Yes (defaults to localhost:3001 for dev) |
-| `NEXT_PUBLIC_KLIPY_API_KEY` | Klipy API key for GIFs/stickers | Yes |
-
-#### Getting a Klipy API Key
-
-The chat application uses [Klipy](https://klipy.co) for GIF and sticker search functionality. To get your free API key:
-
-1. Visit [klipy.co](https://klipy.co)
-2. Sign up for a free account
-3. Navigate to your dashboard to get your API key
-4. Add the key to your `.env.local` file as `NEXT_PUBLIC_KLIPY_API_KEY`
-
-### WebSocket Gateway (`.env`)
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `PORT` | Server port (default: 3001) | No |
-| `SUPABASE_URL` | Supabase project URL | Yes |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | Yes |
-| `NODE_ENV` | Environment (development/production) | No |
-
----
-
-## Development Setup
-
-### Quick Start
-
+Rebuild & restart:
 ```bash
-# 1. Clone and install
-git clone <repo>
-cd chat-app
-npm install
-cd websocket-gateway && npm install && cd ..
-
-# 2. Set up environment variables (see above)
-
-# 3. Run both servers
-# Terminal 1:
-npm run dev
-
-# Terminal 2:
-cd websocket-gateway && npm run dev
+npm run build
+pm2 restart websocket-gateway
 ```
-
-### Common Commands
-
-```bash
-# Next.js
-npm run dev          # Development server
-npm run build        # Production build
-npm run start        # Start production server
-npm run lint         # Run ESLint
-
-# WebSocket Gateway
-cd websocket-gateway
-npm run dev          # Development server (with hot reload)
-npm run build        # Compile TypeScript
-npm run start        # Start production server
-```
-
-### Debugging
-
-- Check browser console for WebSocket connection logs
-- WebSocket server logs to terminal with `[Connection]`, `[Message]`, `[Typing]` prefixes
-- Supabase Dashboard > Logs for database/auth issues
-
 ---
 
-## Troubleshooting
+## That's it, 
 
-### WebSocket Connection Failed
-- Verify `NEXT_PUBLIC_WS_URL` is correct
-- Check WebSocket server is running
-- Check CORS configuration in WebSocket server
 
-### Authentication Issues
-- Verify Supabase credentials
-- Check cookies are being set (HTTPS required in production)
-- Clear browser cookies and try again
-
-### Database Errors
-- Run the full schema SQL in Supabase SQL Editor
-- Check RLS policies are enabled
-- Verify service role key for WebSocket server
-
-### Messages Not Appearing
-- Check WebSocket connection in browser dev tools
-- Verify user is authenticated
-- Check Supabase realtime is enabled for tables
-
----
-
+If the client connects, congrats it works, if it doesn't then it is what it is, just be patient.
